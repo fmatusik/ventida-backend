@@ -59,7 +59,8 @@ export class ChatService {
                 user: true, // Kupujący
                 listing: {
                     include: {
-                        user: true // Sprzedający
+                        user: true, // Sprzedający
+                        images: true
                     }
                 },
                 messages: {
@@ -79,7 +80,11 @@ export class ChatService {
             },
             include: {
                 user: true,
-                listing: true,
+                listing: {
+                    include: {
+                        images: true
+                    }
+                },
                 messages: {
                     orderBy: { created_at: 'desc' },
                     take: 1
@@ -95,7 +100,11 @@ export class ChatService {
             where: { id },
             include: {
                 user: true,
-                listing: true,
+                listing: {
+                    include: {
+                        images: true
+                    }
+                },
                 messages: {
                     orderBy: { created_at: 'asc' }
                 }

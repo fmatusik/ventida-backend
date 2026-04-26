@@ -104,7 +104,8 @@ export class ListingService{
             where: { userId },
             include: { 
                 _count: { select: { views: true, favourites: true } }, 
-                category: true 
+                category: true,
+                images: true
             },
             orderBy: { created_at: 'desc' }
         });
