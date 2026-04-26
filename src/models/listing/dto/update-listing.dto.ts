@@ -1,4 +1,13 @@
-import { IsString, IsNumber, IsBoolean, IsOptional, IsEmail, Min } from 'class-validator';
+import { IsString, IsNumber, IsBoolean, IsOptional, IsEmail, Min, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+class ListingImageDto {
+  @IsString()
+  url: string;
+
+  @IsNumber()
+  position: number;
+}
 
 export class UpdateListingDto {
   @IsOptional()
@@ -41,4 +50,10 @@ export class UpdateListingDto {
   @IsOptional()
   @IsNumber()
   categoryId?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ListingImageDto)
+  images?: ListingImageDto[];
 }

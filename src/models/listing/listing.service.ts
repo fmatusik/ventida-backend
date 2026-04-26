@@ -122,9 +122,17 @@ export class ListingService{
             throw new BadRequestException('Brak uprawnień do edycji tego ogłoszenia');
         }
 
+        const { images, ...listingData } = data;
+
         return await this.prisma.listing.update({
             where: { id },
-            data,
+            data: {
+                ...listingData,
+                images: images ? {
+                    deleteMany: {},
+                    create: images
+                } : undefined
+            },
             include: {
                 category: true,
                 images: true,
