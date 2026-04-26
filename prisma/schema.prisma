@@ -1,0 +1,191 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+
+model User {
+  id            Int       @id @default(autoincrement())
+  name          String?
+  surname       String?
+  username      String?    @unique
+  email         String    @unique
+  phone_number  String?
+  password      String?
+  pictureUrl    String?
+  googleId      String?
+  description   String?
+  city          String?
+  countryCode   String?
+
+  // relacje
+  listings      Listing[]
+  reviewsGiven  Review[]  @relation("ReviewsGiven")
+  reviewsTaken  Review[]  @relation("ReviewsTaken")
+  favourites    Favourite[]
+  addresses     Address[]
+  chats         Chat[]
+  viewed        View[]
+  messagesSent  Message[]
+
+  createdAt     DateTime  @default(now())
+}
+
+model Review {
+  id              Int      @id @default(autoincrement())
+  rating          Int
+  comment         String?
+  created_at      DateTime @default(now())
+
+  reviewer_id     Int
+  reviewed_user_id Int
+
+  reviewer        User @relation("ReviewsGiven", fields: [reviewer_id], references: [id])
+  reviewedUser    User @relation("ReviewsTaken", fields: [reviewed_user_id], references: [id])
+}
+
+model Address {
+  id               Int    @id @default(autoincrement())
+  name             String
+  surname          String
+  phone_number     String?
+  country          String
+  town             String
+  street           String
+  building_number  String
+  apartment_number String?
+  zip              String
+
+  userId           Int
+  user             User   @relation(fields: [userId], references: [id])
+}
+
+model Listing {
+  id              Int      @id @default(autoincrement())
+  title           String
+  description     String
+  price           Float
+  is_negotiable   Boolean @default(false)
+  status          String
+  location        String
+  created_at      DateTime @default(now())
+  expires_at      DateTime?
+  contact_person  String?
+  email           String?
+  phone_number    String?
+
+  userId          Int
+  categoryId      Int
+
+  user            User     @relation(fields: [userId], references: [id])
+  category        Category @relation(fields: [categoryId], references: [id])
+
+  images          ListingImage[]
+  attributeValues AttributeValue[]
+  chats           Chat[]
+  favourites      Favourite[]
+  views           View[]
+}
+
+model ListingImage {
+  id        Int    @id @default(autoincrement())
+  url       String
+  position  Int
+
+  listingId Int
+  listing   Listing @relation(fields: [listingId], references: [id])
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  slug      String  @unique
+  position  Int     @default(0)
+
+  parent_id Int?
+  parent    Category? @relation("CategoryTree", fields: [parent_id], references: [id])
+  children  Category[] @relation("CategoryTree")
+
+  listings  Listing[]
+  attributes Attribute[]
+}
+
+model Attribute {
+  id         Int    @id @default(autoincrement())
+  name       String
+  type       String
+
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  values     AttributeValue[]
+}
+
+model AttributeValue {
+  id          Int    @id @default(autoincrement())
+  value       String
+
+  attributeId Int
+  listingId   Int
+
+  attribute   Attribute @relation(fields: [attributeId], references: [id])
+  listing     Listing   @relation(fields: [listingId], references: [id])
+}
+
+model Favourite {
+  id        Int      @id @default(autoincrement())
+  created_at DateTime @default(now())
+
+  userId    Int
+  listingId Int
+
+  user      User    @relation(fields: [userId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id])
+
+  @@unique([userId, listingId])
+}
+
+model Chat {
+  id        Int      @id @default(autoincrement())
+  created_at DateTime @default(now())
+
+  userId    Int
+  listingId Int
+
+  user      User    @relation(fields: [userId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id])
+
+  messages  Message[]
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  message   String
+  created_at DateTime @default(now())
+  is_read   Boolean @default(false)
+
+  chatId    Int
+  senderId  Int
+  chat      Chat @relation(fields: [chatId], references: [id])
+  sender    User @relation(fields: [senderId], references: [id])
+}
+
+model View {
+  id        Int     @id @default(autoincrement())
+  userId    Int
+  listingId Int
+  listing   Listing @relation(fields: [listingId], references: [id])
+  user      User @relation(fields: [userId], references: [id])
+}
+
