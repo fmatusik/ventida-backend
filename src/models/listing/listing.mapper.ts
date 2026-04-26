@@ -19,7 +19,7 @@ export class ListingMapper{
             likesCount: listing._count.favourites,
             created_at: formatTimeAgo(listing.created_at),
             imageUrl: listing.images && listing.images.length > 0 
-                ? (listing.images[0].url.startsWith('http') ? listing.images[0].url : process.env.NEXT_PUBLIC_SERVER_URL + listing.images[0].url) 
+                ? listing.images[0].url
                 : "",
             location: listing.location
         }
