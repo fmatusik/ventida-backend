@@ -4,68 +4,50 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
 import { CreateChatDto } from './dto/create-chat.dto';
+import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../../common/roles';
 
+@UseGuards(JwtAuthGuard)
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
-  @UseGuards(AuthGuard('jwt'))
   @Post()
-  async create(@Body() body: CreateChatDto, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const chat = await this.chatService.create(body, userId);
-    return {
-      success: true,
-      data: chat,
-    };
+  async create(@Body() body: CreateChatDto, @CurrentUser() user: AuthUser) {
+    const chat = await this.chatService.create(body, user.id);
+    return { success: true, data: chat };
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Get()
-  async getMyChatts(@Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const chats = await this.chatService.getChatsByUserId(userId);
-    return {
-      success: true,
-      data: chats,
-      count: chats.length,
-    };
+  async getMyChats(@CurrentUser() user: AuthUser) {
+    const chats = await this.chatService.getChatsByUserId(user.id);
+    return { success: true, data: chats, count: chats.length };
   }
 
   @Get('listing/:listingId')
-  async getChatsByListingId(@Param('listingId') listingId: string) {
-    const chats = await this.chatService.getChatsByListingId(Number(listingId));
-    return {
-      success: true,
-      data: chats,
-      count: chats.length,
-    };
+  async getChatsByListingId(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const chats = await this.chatService.getChatsByListingId(listingId, user);
+    return { success: true, data: chats, count: chats.length };
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    const chat = await this.chatService.getById(Number(id));
-    return {
-      success: true,
-      data: chat,
-    };
+  async getById(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    const chat = await this.chatService.getById(id, user);
+    return { success: true, data: chat };
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Delete(':id')
-  async delete(@Param('id') id: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    await this.chatService.delete(Number(id), userId);
-    return {
-      success: true,
-      message: 'Chat został usunięty',
-    };
+  async delete(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.chatService.delete(id, user);
+    return { success: true, message: 'Chat został usunięty' };
   }
 }

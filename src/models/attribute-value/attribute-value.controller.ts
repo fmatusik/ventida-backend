@@ -4,9 +4,13 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../../common/roles';
 import { AttributeValueService } from './attribute-value.service';
 import { CreateAttributeValueDto } from './dto/create-attribute-value.dto';
 import { UpdateAttributeValueDto } from './dto/update-attribute-value.dto';
@@ -15,9 +19,10 @@ import { UpdateAttributeValueDto } from './dto/update-attribute-value.dto';
 export class AttributeValueController {
   constructor(private readonly attributeValueService: AttributeValueService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Post()
-  async create(@Body() body: CreateAttributeValueDto) {
-    const attributeValue = await this.attributeValueService.create(body);
+  async create(@Body() body: CreateAttributeValueDto, @CurrentUser() user: AuthUser) {
+    const attributeValue = await this.attributeValueService.create(body, user);
     return {
       success: true,
       data: attributeValue,
@@ -25,8 +30,8 @@ export class AttributeValueController {
   }
 
   @Get('listing/:listingId')
-  async getByListingId(@Param('listingId') listingId: string) {
-    const attributeValues = await this.attributeValueService.getByListingId(Number(listingId));
+  async getByListingId(@Param('listingId', ParseIntPipe) listingId: number) {
+    const attributeValues = await this.attributeValueService.getByListingId(listingId);
     return {
       success: true,
       data: attributeValues,
@@ -35,26 +40,32 @@ export class AttributeValueController {
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    const attributeValue = await this.attributeValueService.getById(Number(id));
+  async getById(@Param('id', ParseIntPipe) id: number) {
+    const attributeValue = await this.attributeValueService.getById(id);
     return {
       success: true,
       data: attributeValue,
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: UpdateAttributeValueDto) {
-    const attributeValue = await this.attributeValueService.update(Number(id), body);
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateAttributeValueDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const attributeValue = await this.attributeValueService.update(id, body, user);
     return {
       success: true,
       data: attributeValue,
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  async delete(@Param('id') id: string) {
-    await this.attributeValueService.delete(Number(id));
+  async delete(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.attributeValueService.delete(id, user);
     return {
       success: true,
       message: 'Wartość atrybutu została usunięta',

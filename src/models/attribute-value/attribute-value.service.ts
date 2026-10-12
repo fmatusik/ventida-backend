@@ -1,96 +1,71 @@
-import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
-import { CreateAttributeValueDto } from "./dto/create-attribute-value.dto";
-import { UpdateAttributeValueDto } from "./dto/update-attribute-value.dto";
-import { AttributeValue } from "@prisma/client";
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Role } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateAttributeValueDto } from './dto/create-attribute-value.dto';
+import { UpdateAttributeValueDto } from './dto/update-attribute-value.dto';
+import { AuthUser } from '../../common/roles';
 
 @Injectable()
 export class AttributeValueService {
-    constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) {}
 
-    async create(data: CreateAttributeValueDto): Promise<AttributeValue> {
-        // Sprawdzenie czy atrybut istnieje
-        const attribute = await this.prisma.attribute.findUnique({
-            where: { id: data.attributeId }
-        });
-
-        if (!attribute) {
-            throw new NotFoundException(`Atrybut o ID ${data.attributeId} nie znaleziony`);
-        }
-
-        // Sprawdzenie czy ogłoszenie istnieje
-        const listing = await this.prisma.listing.findUnique({
-            where: { id: data.listingId }
-        });
-
-        if (!listing) {
-            throw new NotFoundException(`Ogłoszenie o ID ${data.listingId} nie znalezione`);
-        }
-
-        return await this.prisma.attributeValue.create({
-            data,
-            include: {
-                attribute: true,
-                listing: true
-            }
-        });
+  private async assertListingOwner(listingId: number, user: AuthUser) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { userId: true },
+    });
+    if (!listing) throw new NotFoundException(`Ogłoszenie o ID ${listingId} nie znalezione`);
+    if (listing.userId !== user.id && user.role !== Role.ADMIN) {
+      throw new ForbiddenException('Brak uprawnień do tego ogłoszenia');
     }
+  }
 
-    async getByListingId(listingId: number) {
-        return await this.prisma.attributeValue.findMany({
-            where: { listingId },
-            include: {
-                attribute: true
-            }
-        });
+  async create(data: CreateAttributeValueDto, user: AuthUser) {
+    const attribute = await this.prisma.attribute.findUnique({
+      where: { id: data.attributeId },
+    });
+    if (!attribute) {
+      throw new NotFoundException(`Atrybut o ID ${data.attributeId} nie znaleziony`);
     }
+    await this.assertListingOwner(data.listingId, user);
 
-    async getById(id: number): Promise<AttributeValue> {
-        const attributeValue = await this.prisma.attributeValue.findUnique({
-            where: { id },
-            include: {
-                attribute: true,
-                listing: true
-            }
-        });
+    return this.prisma.attributeValue.create({
+      data,
+      include: { attribute: true },
+    });
+  }
 
-        if (!attributeValue) {
-            throw new NotFoundException(`Wartość atrybutu o ID ${id} nie znaleziona`);
-        }
+  getByListingId(listingId: number) {
+    return this.prisma.attributeValue.findMany({
+      where: { listingId },
+      include: { attribute: true },
+    });
+  }
 
-        return attributeValue;
+  async getById(id: number) {
+    const attributeValue = await this.prisma.attributeValue.findUnique({
+      where: { id },
+      include: { attribute: true },
+    });
+    if (!attributeValue) {
+      throw new NotFoundException(`Wartość atrybutu o ID ${id} nie znaleziona`);
     }
+    return attributeValue;
+  }
 
-    async update(id: number, data: UpdateAttributeValueDto): Promise<AttributeValue> {
-        const attributeValue = await this.prisma.attributeValue.findUnique({ where: { id } });
+  async update(id: number, data: UpdateAttributeValueDto, user: AuthUser) {
+    const existing = await this.getById(id);
+    await this.assertListingOwner(existing.listingId, user);
+    return this.prisma.attributeValue.update({
+      where: { id },
+      data: { value: data.value },
+      include: { attribute: true },
+    });
+  }
 
-        if (!attributeValue) {
-            throw new NotFoundException(`Wartość atrybutu o ID ${id} nie znaleziona`);
-        }
-
-        return await this.prisma.attributeValue.update({
-            where: { id },
-            data,
-            include: {
-                attribute: true,
-                listing: true
-            }
-        });
-    }
-
-    async delete(id: number): Promise<void> {
-        const attributeValue = await this.prisma.attributeValue.findUnique({ where: { id } });
-
-        if (!attributeValue) {
-            throw new NotFoundException(`Wartość atrybutu o ID ${id} nie znaleziona`);
-        }
-
-        await this.prisma.attributeValue.delete({ where: { id } });
-    }
-
-    async deleteByListingId(listingId: number): Promise<void> {
-        await this.prisma.attributeValue.deleteMany({
-            where: { listingId }
-        });
-    }
+  async delete(id: number, user: AuthUser): Promise<void> {
+    const existing = await this.getById(id);
+    await this.assertListingOwner(existing.listingId, user);
+    await this.prisma.attributeValue.delete({ where: { id } });
+  }
 }

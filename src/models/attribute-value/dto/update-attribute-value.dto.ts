@@ -1,15 +1,7 @@
-import { IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsString, MaxLength } from 'class-validator';
 
+/** Zmienić można tylko wartość - przenoszenie na inne ogłoszenie/atrybut jest zablokowane. */
 export class UpdateAttributeValueDto {
-  @IsOptional()
-  @IsString()
-  value?: string;
-
-  @IsOptional()
-  @IsNumber()
-  attributeId?: number;
-
-  @IsOptional()
-  @IsNumber()
-  listingId?: number;
+  @IsString() @MaxLength(200)
+  value: string;
 }

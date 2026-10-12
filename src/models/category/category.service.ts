@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
+import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { Category } from "@prisma/client";
@@ -136,6 +136,14 @@ export class CategoryService {
 
             if (existingCategory) {
                 throw new BadRequestException('Kategoria z takim slug\'iem już istnieje');
+            }
+        }
+
+        // Zmiana rodzica nie może utworzyć pętli w drzewie kategorii
+        if (data.parent_id !== undefined && data.parent_id !== null) {
+            const descendants = await this.getAllChildIds(id);
+            if (descendants.includes(data.parent_id)) {
+                throw new BadRequestException('Kategoria nie może być swoim własnym potomkiem');
             }
         }
 

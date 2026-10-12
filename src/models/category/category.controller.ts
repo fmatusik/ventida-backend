@@ -4,10 +4,15 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { Role } from '@prisma/client';
+import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+import { Roles, RolesGuard } from '../../common/roles';
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -16,6 +21,8 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @Post()
   async create(@Body() body: CreateCategoryDto) {
     const category = await this.categoryService.create(body);
@@ -64,8 +71,8 @@ export class CategoryController {
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    const category = await this.categoryService.getById(Number(id));
+  async getById(@Param('id', ParseIntPipe) id: number) {
+    const category = await this.categoryService.getById(id);
     return {
       success: true,
       data: category,
@@ -73,8 +80,8 @@ export class CategoryController {
   }
 
   @Get(':id/children')
-  async getChildren(@Param('id') id: string) {
-    const children = await this.categoryService.getChildren(Number(id));
+  async getChildren(@Param('id', ParseIntPipe) id: number) {
+    const children = await this.categoryService.getChildren(id);
     return {
       success: true,
       data: children,
@@ -82,18 +89,22 @@ export class CategoryController {
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: UpdateCategoryDto) {
-    const category = await this.categoryService.update(Number(id), body);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateCategoryDto) {
+    const category = await this.categoryService.update(id, body);
     return {
       success: true,
       data: category,
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @Delete(':id')
-  async delete(@Param('id') id: string) {
-    await this.categoryService.delete(Number(id));
+  async delete(@Param('id', ParseIntPipe) id: number) {
+    await this.categoryService.delete(id);
     return {
       success: true,
       message: 'Kategoria została usunięta',

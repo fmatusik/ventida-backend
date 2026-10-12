@@ -1,12 +1,12 @@
-import { IsString, IsNumber } from 'class-validator';
+import { IsInt, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateAttributeValueDto {
-  @IsString()
+  @IsString() @MaxLength(200)
   value: string;
 
-  @IsNumber()
+  @IsInt() @Min(1)
   attributeId: number;
 
-  @IsNumber()
+  @IsInt() @Min(1)
   listingId: number;
 }

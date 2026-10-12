@@ -1,132 +1,87 @@
-import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
-import { View } from "@prisma/client";
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Role } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuthUser } from '../../common/roles';
+
+const DEDUPE_WINDOW_MS = 60 * 60 * 1000;
 
 @Injectable()
 export class ViewService {
-    constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) {}
 
-    async recordView(listingId: number, userId: number): Promise<View> {
-        // Sprawdzenie czy ogłoszenie istnieje
-        const listing = await this.prisma.listing.findUnique({
-            where: { id: listingId }
-        });
+  /**
+   * Zapisuje wyświetlenie. Własne wyświetlenia właściciela i powtórne wyświetlenia
+   * tego samego zalogowanego użytkownika w ciągu godziny nie są liczone.
+   * Wyświetlenia anonimowe są ograniczone przez rate limit na poziomie endpointu.
+   */
+  async recordView(listingId: number, userId?: number) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { id: true, userId: true },
+    });
+    if (!listing) {
+      throw new NotFoundException(`Ogłoszenie o ID ${listingId} nie znalezione`);
+    }
+    if (userId && listing.userId === userId) return { counted: false };
 
-        if (!listing) {
-            throw new NotFoundException(`Ogłoszenie o ID ${listingId} nie znalezione`);
-        }
-
-        // Sprawdzenie czy użytkownik istnieje (opcjonalnie - mogą być anonimowe widoki)
-        if (userId) {
-            const user = await this.prisma.user.findUnique({
-                where: { id: userId }
-            });
-
-            if (!user) {
-                throw new NotFoundException(`Użytkownik o ID ${userId} nie istnieje`);
-            }
-        }
-
-        return await this.prisma.view.create({
-            data: {
-                listingId,
-                userId
-            }
-        });
+    if (userId) {
+      const recent = await this.prisma.view.findFirst({
+        where: {
+          listingId,
+          userId,
+          created_at: { gt: new Date(Date.now() - DEDUPE_WINDOW_MS) },
+        },
+        select: { id: true },
+      });
+      if (recent) return { counted: false };
     }
 
-    async getListingViewsCount(listingId: number): Promise<number> {
-        return await this.prisma.view.count({
-            where: { listingId }
-        });
+    await this.prisma.view.create({ data: { listingId, userId: userId ?? null } });
+    return { counted: true };
+  }
+
+  getListingViewsCount(listingId: number) {
+    return this.prisma.view.count({ where: { listingId } });
+  }
+
+  /** Lista widzów - tylko dla właściciela ogłoszenia (i admina), bez danych kontaktowych. */
+  async getListingViews(listingId: number, user: AuthUser, skip = 0, take = 50) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { userId: true },
+    });
+    if (!listing) throw new NotFoundException('Ogłoszenie nie znalezione');
+    if (listing.userId !== user.id && user.role !== Role.ADMIN) {
+      throw new ForbiddenException('Brak uprawnień');
     }
+    return this.prisma.view.findMany({
+      where: { listingId },
+      skip,
+      take,
+      select: {
+        id: true,
+        created_at: true,
+        user: { select: { id: true, username: true } },
+      },
+      orderBy: { id: 'desc' },
+    });
+  }
 
-    async getListingViews(listingId: number, skip = 0, take = 50) {
-        return await this.prisma.view.findMany({
-            where: { listingId },
-            skip,
-            take,
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        email: true
-                    }
-                }
-            },
-            orderBy: { id: 'desc' }
-        });
-    }
+  getUserViews(userId: number, skip = 0, take = 50) {
+    return this.prisma.view.findMany({
+      where: { userId },
+      skip,
+      take,
+      include: { listing: { include: { category: true, images: true } } },
+      orderBy: { id: 'desc' },
+    });
+  }
 
-    async getUserViews(userId: number, skip = 0, take = 50) {
-        return await this.prisma.view.findMany({
-            where: { userId },
-            skip,
-            take,
-            include: {
-                listing: {
-                    include: {
-                        category: true,
-                        images: true
-                    }
-                }
-            },
-            orderBy: { id: 'desc' }
-        });
-    }
+  getUserListingViewCount(listingId: number, userId: number) {
+    return this.prisma.view.count({ where: { listingId, userId } });
+  }
 
-    async getViewsByDateRange(listingId: number, startDate: Date, endDate: Date) {
-        return await this.prisma.view.findMany({
-            where: {
-                listingId,
-                id: {
-                    gte: startDate as any,
-                    lte: endDate as any
-                }
-            },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        username: true
-                    }
-                }
-            }
-        });
-    }
-
-    async getUserListingViewCount(listingId: number, userId: number): Promise<number> {
-        return await this.prisma.view.count({
-            where: {
-                listingId,
-                userId
-            }
-        });
-    }
-
-    async getTotalViewsForUserListings(userId: number): Promise<number> {
-        // Pobranie wszystkich ogłoszeń użytkownika
-        const listings = await this.prisma.listing.findMany({
-            where: { userId },
-            select: { id: true }
-        });
-
-        const listingIds = listings.map(l => l.id);
-
-        // Zliczenie widoków dla wszystkich ogłoszeń
-        return await this.prisma.view.count({
-            where: {
-                listingId: {
-                    in: listingIds
-                }
-            }
-        });
-    }
-
-    async deleteViewsByListingId(listingId: number): Promise<void> {
-        await this.prisma.view.deleteMany({
-            where: { listingId }
-        });
-    }
+  getTotalViewsForUserListings(userId: number) {
+    return this.prisma.view.count({ where: { listing: { userId } } });
+  }
 }

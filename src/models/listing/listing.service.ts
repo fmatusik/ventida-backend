@@ -1,202 +1,174 @@
-import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
-import { CreateListingDto } from "./dto/create-listing.dto";
-import { UpdateListingDto } from "./dto/update-listing.dto";
-import { Listing } from "@prisma/client";
-import { CategoryService } from "../category/category.service";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, Role } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CategoryService } from '../category/category.service';
+import { CreateListingDto } from './dto/create-listing.dto';
+import { UpdateListingDto } from './dto/update-listing.dto';
+import { AuthUser } from '../../common/roles';
+import { PUBLIC_USER_SELECT } from '../../common/user-select';
+
+const LIST_INCLUDE = {
+  category: true,
+  images: { orderBy: { position: 'asc' } },
+  _count: { select: { views: true, favourites: true } },
+} satisfies Prisma.ListingInclude;
 
 @Injectable()
-export class ListingService{
-    constructor(
-        private prisma: PrismaService,
-        private categoryService: CategoryService
-    ){}
+export class ListingService {
+  constructor(
+    private prisma: PrismaService,
+    private categoryService: CategoryService,
+  ) {}
 
-    async create(data: CreateListingDto, userId: number): Promise<Listing> {
-        const { images, ...listingData } = data;
-        try {
-            return await this.prisma.listing.create({
-                data: {
-                    ...listingData,
-                    userId,
-                    images: images ? {
-                        create: images
-                    } : undefined
-                },
-                include: {
-                    category: true,
-                    images: true,
-                    _count: { select: { views: true, favourites: true } }
-                }
-            });
-        } catch (error) {
-            console.error(error);
-            throw new BadRequestException('Nie udało się utworzyć ogłoszenia');
-        }
+  private async assertCategoryExists(categoryId: number) {
+    const category = await this.prisma.category.findUnique({
+      where: { id: categoryId },
+      select: { id: true },
+    });
+    if (!category) throw new BadRequestException('Wybrana kategoria nie istnieje');
+  }
+
+  async create(data: CreateListingDto, userId: number) {
+    const { images, ...listingData } = data;
+    await this.assertCategoryExists(data.categoryId);
+    return this.prisma.listing.create({
+      data: {
+        ...listingData,
+        status: listingData.status ?? 'available',
+        userId,
+        images: images?.length ? { create: images } : undefined,
+      },
+      include: LIST_INCLUDE,
+    });
+  }
+
+  async getAll(
+    skip = 0,
+    take = 20,
+    categoryId?: number,
+    query?: string,
+    minPrice?: number,
+    maxPrice?: number,
+    location?: string,
+  ) {
+    const where: Prisma.ListingWhereInput = {
+      // archiwalne ogłoszenia nie są wyświetlane na liście publicznej
+      status: { not: 'archived' },
+      OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
+    };
+    const and: Prisma.ListingWhereInput[] = [];
+
+    if (categoryId) {
+      const categoryIds = await this.categoryService.getAllChildIds(categoryId);
+      and.push({ categoryId: { in: categoryIds } });
     }
 
-    async getAll(
-        skip = 0, 
-        take = 20, 
-        categoryId?: number, 
-        query?: string, 
-        minPrice?: number, 
-        maxPrice?: number, 
-        location?: string
-    ): Promise<Listing[]> {
-        const where: any = {};
-        
-        if (categoryId) {
-            const categoryIds = await this.categoryService.getAllChildIds(Number(categoryId));
-            where.categoryId = { in: categoryIds };
-        }
-
-        if (query) {
-            where.OR = [
-                { title: { contains: query, mode: 'insensitive' } },
-                { description: { contains: query, mode: 'insensitive' } }
-            ];
-        }
-
-        if (minPrice || maxPrice) {
-            where.price = {};
-            if (minPrice) where.price.gte = Number(minPrice);
-            if (maxPrice) where.price.lte = Number(maxPrice);
-        }
-
-        if (location) {
-            where.location = { contains: location, mode: 'insensitive' };
-        }
-        
-        return await this.prisma.listing.findMany({
-            where,
-            skip: Number(skip),
-            take: Number(take),
-            include: {
-                category: true,
-                images: true,
-                _count: { select: { views: true, favourites: true } }
-            },
-            orderBy: { created_at: 'desc' }
-        });
+    if (query) {
+      and.push({
+        OR: [
+          { title: { contains: query, mode: 'insensitive' } },
+          { description: { contains: query, mode: 'insensitive' } },
+        ],
+      });
     }
 
-    async getById(id: number): Promise<Listing> {
-        const listing = await this.prisma.listing.findUnique({
-            where: { id },
-            include: {
-                category: true,
-                images: true,
-                user: true,
-                _count: { select: { views: true, favourites: true, chats: true } }
-            }
-        });
-
-        if (!listing) {
-            throw new NotFoundException(`Ogłoszenie o ID ${id} nie znalezione`);
-        }
-
-        return listing;
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      and.push({
+        price: {
+          ...(minPrice !== undefined ? { gte: minPrice } : {}),
+          ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+        },
+      });
     }
 
-    async getByUserId(userId): Promise<any[]> {
-        return await this.prisma.listing.findMany({
-            where: { userId },
-            include: { 
-                _count: { select: { views: true, favourites: true } }, 
-                category: true,
-                images: true
-            },
-            orderBy: { created_at: 'desc' }
-        });
+    if (location) {
+      and.push({ location: { contains: location, mode: 'insensitive' } });
     }
 
-    async update(id: number, data: UpdateListingDto, userId: number): Promise<Listing> {
-        const listing = await this.prisma.listing.findUnique({ where: { id } });
+    return this.prisma.listing.findMany({
+      where: { ...where, AND: and },
+      skip,
+      take,
+      include: LIST_INCLUDE,
+      orderBy: { created_at: 'desc' },
+    });
+  }
 
-        if (!listing) {
-            throw new NotFoundException(`Ogłoszenie o ID ${id} nie znalezione`);
-        }
+  async getById(id: number) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id },
+      include: {
+        category: true,
+        images: { orderBy: { position: 'asc' } },
+        user: { select: PUBLIC_USER_SELECT },
+        _count: { select: { views: true, favourites: true, chats: true } },
+      },
+    });
 
-        if (listing.userId !== userId) {
-            throw new BadRequestException('Brak uprawnień do edycji tego ogłoszenia');
-        }
-
-        const { images, ...listingData } = data;
-
-        return await this.prisma.listing.update({
-            where: { id },
-            data: {
-                ...listingData,
-                images: images ? {
-                    deleteMany: {},
-                    create: images
-                } : undefined
-            },
-            include: {
-                category: true,
-                images: true,
-                _count: { select: { views: true, favourites: true } }
-            }
-        });
+    if (!listing) {
+      throw new NotFoundException(`Ogłoszenie o ID ${id} nie znalezione`);
     }
+    return listing;
+  }
 
-    async delete(id: number, userId: number): Promise<void> {
-        const listing = await this.prisma.listing.findUnique({ where: { id } });
+  async getByUserId(userId: number) {
+    return this.prisma.listing.findMany({
+      where: { userId },
+      include: LIST_INCLUDE,
+      orderBy: { created_at: 'desc' },
+    });
+  }
 
-        if (!listing) {
-            throw new NotFoundException(`Ogłoszenie o ID ${id} nie znalezione`);
-        }
-
-        if (listing.userId !== userId) {
-            throw new BadRequestException('Brak uprawnień do usunięcia tego ogłoszenia');
-        }
-
-        await this.prisma.listing.delete({ where: { id } });
+  /** Zwraca ogłoszenie, jeśli użytkownik jest właścicielem (lub adminem). */
+  async assertCanModify(id: number, user: AuthUser) {
+    const listing = await this.prisma.listing.findUnique({ where: { id } });
+    if (!listing) {
+      throw new NotFoundException(`Ogłoszenie o ID ${id} nie znalezione`);
     }
-
-    async addImage(listingId: number, url: string, position: number) {
-        const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
-        
-        if (!listing) {
-            throw new NotFoundException(`Ogłoszenie o ID ${listingId} nie znalezione`);
-        }
-
-        return await this.prisma.listingImage.create({
-            data: {
-                listingId,
-                url,
-                position
-            }
-        });
+    if (listing.userId !== user.id && user.role !== Role.ADMIN) {
+      throw new ForbiddenException('Brak uprawnień do tego ogłoszenia');
     }
+    return listing;
+  }
 
-    async deleteImage(imageId: number): Promise<void> {
-        const image = await this.prisma.listingImage.findUnique({ where: { id: imageId } });
-        
-        if (!image) {
-            throw new NotFoundException(`Zdjęcie o ID ${imageId} nie znalezione`);
-        }
+  async update(id: number, data: UpdateListingDto, user: AuthUser) {
+    await this.assertCanModify(id, user);
+    const { images, ...listingData } = data;
+    if (listingData.categoryId) await this.assertCategoryExists(listingData.categoryId);
 
-        await this.prisma.listingImage.delete({ where: { id: imageId } });
-    }
+    return this.prisma.listing.update({
+      where: { id },
+      data: {
+        ...listingData,
+        images: images ? { deleteMany: {}, create: images } : undefined,
+      },
+      include: LIST_INCLUDE,
+    });
+  }
 
-    async search(query: string, skip = 0, take = 20): Promise<Listing[]> {
-        return await this.prisma.listing.findMany({
-            where: {
-                OR: [
-                    { title: { contains: query, mode: 'insensitive' } },
-                    { description: { contains: query, mode: 'insensitive' } }
-                ]
-            },
-            skip,
-            take,
-            include: {
-                category: true,
-                images: true,
-                _count: { select: { views: true, favourites: true } }
-            },
-            orderBy: { created_at: 'desc' }
-        });
-    }
+  async delete(id: number, user: AuthUser): Promise<void> {
+    await this.assertCanModify(id, user);
+    await this.prisma.listing.delete({ where: { id } });
+  }
+
+  async addImage(listingId: number, url: string, position: number, user: AuthUser) {
+    await this.assertCanModify(listingId, user);
+    const count = await this.prisma.listingImage.count({ where: { listingId } });
+    if (count >= 10) throw new BadRequestException('Maksymalnie 10 zdjęć');
+    return this.prisma.listingImage.create({ data: { listingId, url, position } });
+  }
+
+  async deleteImage(listingId: number, imageId: number, user: AuthUser): Promise<void> {
+    await this.assertCanModify(listingId, user);
+    const image = await this.prisma.listingImage.findFirst({
+      where: { id: imageId, listingId },
+    });
+    if (!image) throw new NotFoundException(`Zdjęcie o ID ${imageId} nie znalezione`);
+    await this.prisma.listingImage.delete({ where: { id: imageId } });
+  }
 }

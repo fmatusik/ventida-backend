@@ -14,49 +14,57 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum Role {
+  USER
+  ADMIN
+}
 
 model User {
-  id            Int       @id @default(autoincrement())
-  name          String?
-  surname       String?
-  username      String?    @unique
-  email         String    @unique
-  phone_number  String?
-  password      String?
-  pictureUrl    String?
-  googleId      String?
-  description   String?
-  city          String?
-  countryCode   String?
+  id           Int     @id @default(autoincrement())
+  name         String?
+  surname      String?
+  username     String? @unique
+  email        String  @unique
+  phone_number String?
+  password     String?
+  pictureUrl   String?
+  googleId     String?
+  description  String?
+  city         String?
+  countryCode  String?
+  role         Role    @default(USER)
 
   // relacje
-  listings      Listing[]
-  reviewsGiven  Review[]  @relation("ReviewsGiven")
-  reviewsTaken  Review[]  @relation("ReviewsTaken")
-  favourites    Favourite[]
-  addresses     Address[]
-  chats         Chat[]
-  viewed        View[]
-  messagesSent  Message[]
+  listings     Listing[]
+  reviewsGiven Review[]    @relation("ReviewsGiven")
+  reviewsTaken Review[]    @relation("ReviewsTaken")
+  favourites   Favourite[]
+  addresses    Address[]
+  chats        Chat[]
+  viewed       View[]
+  messagesSent Message[]
 
-  createdAt     DateTime  @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Review {
-  id              Int      @id @default(autoincrement())
-  rating          Int
-  comment         String?
-  created_at      DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  rating     Int
+  comment    String?
+  created_at DateTime @default(now())
 
-  reviewer_id     Int
+  reviewer_id      Int
   reviewed_user_id Int
 
-  reviewer        User @relation("ReviewsGiven", fields: [reviewer_id], references: [id])
-  reviewedUser    User @relation("ReviewsTaken", fields: [reviewed_user_id], references: [id])
+  reviewer     User @relation("ReviewsGiven", fields: [reviewer_id], references: [id], onDelete: Cascade)
+  reviewedUser User @relation("ReviewsTaken", fields: [reviewed_user_id], references: [id], onDelete: Cascade)
+
+  @@unique([reviewer_id, reviewed_user_id])
+  @@index([reviewed_user_id])
 }
 
 model Address {
-  id               Int    @id @default(autoincrement())
+  id               Int     @id @default(autoincrement())
   name             String
   surname          String
   phone_number     String?
@@ -67,125 +75,139 @@ model Address {
   apartment_number String?
   zip              String
 
-  userId           Int
-  user             User   @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Listing {
-  id              Int      @id @default(autoincrement())
-  title           String
-  description     String
-  price           Float
-  is_negotiable   Boolean @default(false)
-  status          String
-  location        String
-  created_at      DateTime @default(now())
-  expires_at      DateTime?
-  contact_person  String?
-  email           String?
-  phone_number    String?
+  id             Int       @id @default(autoincrement())
+  title          String
+  description    String
+  price          Float
+  is_negotiable  Boolean   @default(false)
+  status         String
+  location       String
+  created_at     DateTime  @default(now())
+  expires_at     DateTime?
+  contact_person String?
+  email          String?
+  phone_number   String?
 
-  userId          Int
-  categoryId      Int
+  userId     Int
+  categoryId Int
 
-  user            User     @relation(fields: [userId], references: [id])
-  category        Category @relation(fields: [categoryId], references: [id])
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id])
 
   images          ListingImage[]
   attributeValues AttributeValue[]
   chats           Chat[]
   favourites      Favourite[]
   views           View[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([created_at])
 }
 
 model ListingImage {
-  id        Int    @id @default(autoincrement())
-  url       String
-  position  Int
+  id       Int    @id @default(autoincrement())
+  url      String
+  position Int
 
   listingId Int
-  listing   Listing @relation(fields: [listingId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
 }
 
 model Category {
-  id        Int      @id @default(autoincrement())
-  name      String
-  slug      String  @unique
-  position  Int     @default(0)
+  id       Int    @id @default(autoincrement())
+  name     String
+  slug     String @unique
+  position Int    @default(0)
 
   parent_id Int?
-  parent    Category? @relation("CategoryTree", fields: [parent_id], references: [id])
+  parent    Category?  @relation("CategoryTree", fields: [parent_id], references: [id])
   children  Category[] @relation("CategoryTree")
 
-  listings  Listing[]
+  listings   Listing[]
   attributes Attribute[]
 }
 
 model Attribute {
-  id         Int    @id @default(autoincrement())
-  name       String
-  type       String
+  id   Int    @id @default(autoincrement())
+  name String
+  type String
 
   categoryId Int
   category   Category @relation(fields: [categoryId], references: [id])
 
-  values     AttributeValue[]
+  values AttributeValue[]
 }
 
 model AttributeValue {
-  id          Int    @id @default(autoincrement())
-  value       String
+  id    Int    @id @default(autoincrement())
+  value String
 
   attributeId Int
   listingId   Int
 
-  attribute   Attribute @relation(fields: [attributeId], references: [id])
-  listing     Listing   @relation(fields: [listingId], references: [id])
+  attribute Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  listing   Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
 }
 
 model Favourite {
-  id        Int      @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   created_at DateTime @default(now())
 
   userId    Int
   listingId Int
 
-  user      User    @relation(fields: [userId], references: [id])
-  listing   Listing @relation(fields: [listingId], references: [id])
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
 }
 
 model Chat {
-  id        Int      @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   created_at DateTime @default(now())
 
   userId    Int
   listingId Int
 
-  user      User    @relation(fields: [userId], references: [id])
-  listing   Listing @relation(fields: [listingId], references: [id])
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
-  messages  Message[]
+  messages Message[]
+
+  @@unique([userId, listingId])
 }
 
 model Message {
-  id        Int      @id @default(autoincrement())
-  message   String
+  id         Int      @id @default(autoincrement())
+  message    String
   created_at DateTime @default(now())
-  is_read   Boolean @default(false)
+  is_read    Boolean  @default(false)
 
-  chatId    Int
-  senderId  Int
-  chat      Chat @relation(fields: [chatId], references: [id])
-  sender    User @relation(fields: [senderId], references: [id])
+  chatId   Int
+  senderId Int
+  chat     Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender   User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
 }
 
 model View {
-  id        Int     @id @default(autoincrement())
-  userId    Int
-  listingId Int
-  listing   Listing @relation(fields: [listingId], references: [id])
-  user      User @relation(fields: [userId], references: [id])
-}
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now())
+  userId     Int?
+  listingId  Int
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([listingId])
+}

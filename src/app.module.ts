@@ -15,11 +15,31 @@ import { AttributeValueModule } from './models/attribute-value/attribute-value.m
 import { AddressModule } from './models/address/address.module';
 import { ViewModule } from './models/view/view.module';
 import { UploadModule } from './additional/upload.module';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+import { ConfigModule } from '@nestjs/config';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: (config: Record<string, unknown>) => {
+        const secret = config.JWT_SECRET;
+        if (typeof secret !== 'string' || secret.length < 32) {
+          throw new Error(
+            'JWT_SECRET musi być ustawiony w .env i mieć min. 32 znaki (np. `openssl rand -hex 32`).',
+          );
+        }
+        return config;
+      },
+    }),
+    // Globalny limit: 120 żądań / minutę na IP (ostrzejsze limity na wrażliwych endpointach)
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 120 }],
+      // wyłącznie dla testów e2e, które i tak wykonują setki żądań z jednego IP
+      skipIf: () =>
+        process.env.NODE_ENV === 'test' && process.env.DISABLE_THROTTLE === 'true',
+    }),
     UserModule,
     ListingModule,
     ReviewModule,
@@ -34,12 +54,8 @@ import { join } from 'path';
     PrismaModule,
     AuthModule,
     UploadModule,
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/uploads',
-    }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

@@ -1,10 +1,15 @@
-import { Review, User } from "@prisma/client";
 import { GetReviewDto } from "./dto/get-review.dto";
-import formatTimeAgo from "src/additional/formatAgo.time";
+import formatTimeAgo from "../../additional/formatAgo.time";
 
 export class ReviewMapper {
     static toGetReview(
-        review: Review & { reviewer: User}
+        review: {
+            id: number;
+            rating: number;
+            comment: string | null;
+            created_at: Date;
+            reviewer: { username?: string | null };
+        }
     ): GetReviewDto {
         return {
             id: review.id,

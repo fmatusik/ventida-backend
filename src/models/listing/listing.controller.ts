@@ -3,124 +3,124 @@ import {
   Controller,
   Delete,
   Get,
-  NotFoundException,
   Param,
+  ParseIntPipe,
   Post,
   Put,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { ListingService } from './listing.service';
 import { ListingMapper } from './listing.mapper';
-import { CreateListingDto } from './dto/create-listing.dto';
+import { CreateListingDto, ListingImageDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
-import { CreateListingImageDto } from '../listing-image/dto/create-listing-image.dto';
+import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../../common/roles';
+import { safeSkip, safeTake } from '../../common/pagination';
+
+const optionalNumber = (v: unknown): number | undefined => {
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
 
 @Controller('listing')
 export class ListingController {
   constructor(private readonly listingService: ListingService) {}
 
-  @UseGuards(AuthGuard('jwt'))
+  // 20 ogłoszeń na godzinę na IP - chroni przed zaśmiecaniem serwisu
+  @Throttle({ default: { limit: 20, ttl: 3_600_000 } })
+  @UseGuards(JwtAuthGuard)
   @Post()
-  async create(@Body() body: CreateListingDto, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const listing = await this.listingService.create(body, userId);
-    return {
-      success: true,
-      data: listing,
-    };
+  async create(@Body() body: CreateListingDto, @CurrentUser() user: AuthUser) {
+    const listing = await this.listingService.create(body, user.id);
+    return { success: true, data: listing };
   }
 
   @Get()
   async getAll(
-    @Query('skip') skip = 0,
-    @Query('take') take = 20,
-    @Query('categoryId') categoryId?: number,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+    @Query('categoryId') categoryId?: string,
     @Query('q') query?: string,
-    @Query('minPrice') minPrice?: number,
-    @Query('maxPrice') maxPrice?: number,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
     @Query('location') location?: string,
   ) {
     const listings = await this.listingService.getAll(
-        Number(skip), 
-        Number(take), 
-        categoryId ? Number(categoryId) : undefined, 
-        query, 
-        minPrice ? Number(minPrice) : undefined, 
-        maxPrice ? Number(maxPrice) : undefined, 
-        location
+      safeSkip(skip),
+      safeTake(take),
+      optionalNumber(categoryId),
+      typeof query === 'string' ? query.trim().slice(0, 100) || undefined : undefined,
+      optionalNumber(minPrice),
+      optionalNumber(maxPrice),
+      typeof location === 'string' ? location.trim().slice(0, 100) || undefined : undefined,
     );
-    const mappedListings = listings.map(listing => ListingMapper.toShortListingSummary(listing as any));
-    return {
-      success: true,
-      data: mappedListings,
-      count: mappedListings.length,
-    };
+    const data = listings.map((l) => ListingMapper.toShortListingSummary(l));
+    return { success: true, data, count: data.length };
   }
 
   @Get('search')
-  async search(@Query('q') query: string, @Query('skip') skip = 0, @Query('take') take = 20) {
-    if (!query) {
-      throw new NotFoundException('Brakuje parametru query');
-    }
-    const listings = await this.listingService.search(query, skip, take);
-    return {
-      success: true,
-      data: listings,
-      count: listings.length,
-    };
+  async search(
+    @Query('q') query?: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
+    const q = typeof query === 'string' ? query.trim().slice(0, 100) : '';
+    const listings = await this.listingService.getAll(
+      safeSkip(skip),
+      safeTake(take),
+      undefined,
+      q || undefined,
+    );
+    const data = listings.map((l) => ListingMapper.toShortListingSummary(l));
+    return { success: true, data, count: data.length };
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    const listing = await this.listingService.getById(Number(id));
-    return {
-      success: true,
-      data: listing,
-    };
+  async getById(@Param('id', ParseIntPipe) id: number) {
+    const listing = await this.listingService.getById(id);
+    return { success: true, data: listing };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: UpdateListingDto, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const listing = await this.listingService.update(Number(id), body, userId);
-    return {
-      success: true,
-      data: listing,
-    };
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateListingDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const listing = await this.listingService.update(id, body, user);
+    return { success: true, data: listing };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  async delete(@Param('id') id: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    await this.listingService.delete(Number(id), userId);
-    return {
-      success: true,
-      message: 'Ogłoszenie zostało usunięte',
-    };
+  async delete(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.listingService.delete(id, user);
+    return { success: true, message: 'Ogłoszenie zostało usunięte' };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Post(':id/image')
-  async addImage(@Param('id') id: string, @Body() body: CreateListingImageDto) {
-    const image = await this.listingService.addImage(Number(id), body.url, body.position);
-    return {
-      success: true,
-      data: image,
-    };
+  async addImage(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ListingImageDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const image = await this.listingService.addImage(id, body.url, body.position, user);
+    return { success: true, data: image };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Delete(':id/image/:imageId')
-  async deleteImage(@Param('imageId') imageId: string) {
-    await this.listingService.deleteImage(Number(imageId));
-    return {
-      success: true,
-      message: 'Zdjęcie zostało usunięte',
-    };
+  async deleteImage(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('imageId', ParseIntPipe) imageId: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.listingService.deleteImage(id, imageId, user);
+    return { success: true, message: 'Zdjęcie zostało usunięte' };
   }
 }

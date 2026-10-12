@@ -1,11 +1,11 @@
-import { IsOptional, IsString, IsBoolean } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
+/** Edytować można wyłącznie treść własnej wiadomości - status przeczytania ustawia osobny endpoint. */
 export class UpdateMessageDto {
-  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  message?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  is_read?: boolean;
+  @MinLength(1)
+  @MaxLength(2000)
+  message: string;
 }

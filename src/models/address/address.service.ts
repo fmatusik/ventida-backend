@@ -1,5 +1,5 @@
-import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
+import { Injectable, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
 import { CreateAddressDto } from "./dto/create-address.dto";
 import { UpdateAddressDto } from "./dto/update-address.dto";
 import { Address } from "@prisma/client";
@@ -33,21 +33,11 @@ export class AddressService {
         });
     }
 
-    async getById(id: number): Promise<Address> {
-        const address = await this.prisma.address.findUnique({
-            where: { id },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        email: true,
-                        username: true
-                    }
-                }
-            }
-        });
+    async getById(id: number, userId: number): Promise<Address> {
+        const address = await this.prisma.address.findUnique({ where: { id } });
 
-        if (!address) {
+        // 404 także dla cudzych adresów - nie zdradzamy ich istnienia
+        if (!address || address.userId !== userId) {
             throw new NotFoundException(`Adres o ID ${id} nie znaleziony`);
         }
 
@@ -62,7 +52,7 @@ export class AddressService {
         }
 
         if (address.userId !== userId) {
-            throw new BadRequestException('Brak uprawnień do edycji tego adresu');
+            throw new ForbiddenException('Brak uprawnień do edycji tego adresu');
         }
 
         return await this.prisma.address.update({
@@ -79,7 +69,7 @@ export class AddressService {
         }
 
         if (address.userId !== userId) {
-            throw new BadRequestException('Brak uprawnień do usunięcia tego adresu');
+            throw new ForbiddenException('Brak uprawnień do usunięcia tego adresu');
         }
 
         await this.prisma.address.delete({ where: { id } });

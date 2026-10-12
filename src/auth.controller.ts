@@ -1,4 +1,5 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './models/user/dto/login-user.dto';
 
@@ -6,6 +7,9 @@ import { LoginUserDto } from './models/user/dto/login-user.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Ochrona przed zgadywaniem haseł: 8 prób / minutę z jednego IP.
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  @HttpCode(200)
   @Post('login')
   async login(@Body() user: LoginUserDto) {
     return this.authService.login(user);

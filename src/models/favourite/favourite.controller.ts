@@ -3,23 +3,25 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../../common/roles';
 import { FavouriteService } from './favourite.service';
+import { safeSkip, safeTake } from '../../common/pagination';
 
 @Controller('favourite')
 export class FavouriteController {
   constructor(private readonly favouriteService: FavouriteService) {}
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Post(':listingId')
-  async addFavourite(@Param('listingId') listingId: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const favourite = await this.favouriteService.addFavourite(Number(listingId), userId);
+  async addFavourite(@Param('listingId', ParseIntPipe) listingId: number, @CurrentUser() user: AuthUser) {
+    const userId = user.id;
+    const favourite = await this.favouriteService.addFavourite(listingId, userId);
     return {
       success: true,
       data: favourite,
@@ -27,34 +29,34 @@ export class FavouriteController {
     };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Delete(':listingId')
-  async removeFavourite(@Param('listingId') listingId: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    await this.favouriteService.removeFavourite(Number(listingId), userId);
+  async removeFavourite(@Param('listingId', ParseIntPipe) listingId: number, @CurrentUser() user: AuthUser) {
+    const userId = user.id;
+    await this.favouriteService.removeFavourite(listingId, userId);
     return {
       success: true,
       message: 'Usunięto z ulubionych',
     };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Post(':listingId/toggle')
-  async toggleFavourite(@Param('listingId') listingId: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const result = await this.favouriteService.toggleFavourite(Number(listingId), userId);
+  async toggleFavourite(@Param('listingId', ParseIntPipe) listingId: number, @CurrentUser() user: AuthUser) {
+    const userId = user.id;
+    const result = await this.favouriteService.toggleFavourite(listingId, userId);
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Get()
   async getUserFavourites(
-    @Req() req: Request,
-    @Query('skip') skip = 0,
-    @Query('take') take = 20,
+    @CurrentUser() user: AuthUser,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
   ) {
-    const userId = (req as any).user['id'];
-    const favourites = await this.favouriteService.getUserFavourites(userId, Number(skip), Number(take));
+    const userId = user.id;
+    const favourites = await this.favouriteService.getUserFavourites(userId, safeSkip(skip), safeTake(take));
     return {
       success: true,
       data: favourites,
@@ -62,11 +64,11 @@ export class FavouriteController {
     };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Get(':listingId/check')
-  async isFavourite(@Param('listingId') listingId: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const isFav = await this.favouriteService.isFavourite(Number(listingId), userId);
+  async isFavourite(@Param('listingId', ParseIntPipe) listingId: number, @CurrentUser() user: AuthUser) {
+    const userId = user.id;
+    const isFav = await this.favouriteService.isFavourite(listingId, userId);
     return {
       success: true,
       data: {
@@ -76,8 +78,8 @@ export class FavouriteController {
   }
 
   @Get(':listingId/count')
-  async getFavouriteCount(@Param('listingId') listingId: string) {
-    const count = await this.favouriteService.getFavouriteCount(Number(listingId));
+  async getFavouriteCount(@Param('listingId', ParseIntPipe) listingId: number) {
+    const count = await this.favouriteService.getFavouriteCount(listingId);
     return {
       success: true,
       data: {

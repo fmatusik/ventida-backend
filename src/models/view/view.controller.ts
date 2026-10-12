@@ -3,101 +3,86 @@ import {
   Controller,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { ViewService } from './view.service';
 import { CreateViewDto } from './dto/create-view.dto';
+import { JwtAuthGuard, OptionalJwtAuthGuard } from '../../common/jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../../common/roles';
+import { safeSkip, safeTake } from '../../common/pagination';
 
 @Controller('view')
 export class ViewController {
   constructor(private readonly viewService: ViewService) {}
 
-  @UseGuards(AuthGuard('jwt'))
+  // Działa dla zalogowanych i anonimowych (token opcjonalny)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @UseGuards(OptionalJwtAuthGuard)
   @Post()
-  async recordView(@Body() body: CreateViewDto, @Req() req: Request) {
-    const userId = (req as any).user?.['id'];
-    const view = await this.viewService.recordView(body.listingId, userId);
-    return {
-      success: true,
-      data: view,
-      message: 'Widok został zapisany',
-    };
+  async recordView(@Body() body: CreateViewDto, @CurrentUser() user?: AuthUser) {
+    const res = await this.viewService.recordView(body.listingId, user?.id);
+    return { success: true, data: res };
   }
 
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post('anonymous')
   async recordAnonymousView(@Body() body: CreateViewDto) {
-    const view = await this.viewService.recordView(body.listingId, null as any);
-    return {
-      success: true,
-      data: view,
-      message: 'Anonimowy widok został zapisany',
-    };
+    const res = await this.viewService.recordView(body.listingId);
+    return { success: true, data: res };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('user')
+  async getUserViews(
+    @CurrentUser() user: AuthUser,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
+    const views = await this.viewService.getUserViews(user.id, safeSkip(skip), safeTake(take, 50));
+    return { success: true, data: views, count: views.length };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('user/listings/total')
+  async getTotalViewsForUserListings(@CurrentUser() user: AuthUser) {
+    const totalViews = await this.viewService.getTotalViewsForUserListings(user.id);
+    return { success: true, data: { totalViews } };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('user/listing/:listingId')
+  async getUserListingViewCount(
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const count = await this.viewService.getUserListingViewCount(listingId, user.id);
+    return { success: true, data: { count } };
   }
 
   @Get('listing/:listingId/count')
-  async getListingViewsCount(@Param('listingId') listingId: string) {
-    const count = await this.viewService.getListingViewsCount(Number(listingId));
-    return {
-      success: true,
-      data: {
-        count,
-      },
-    };
+  async getListingViewsCount(@Param('listingId', ParseIntPipe) listingId: number) {
+    const count = await this.viewService.getListingViewsCount(listingId);
+    return { success: true, data: { count } };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('listing/:listingId')
   async getListingViews(
-    @Param('listingId') listingId: string,
-    @Query('skip') skip = 0,
-    @Query('take') take = 50,
+    @Param('listingId', ParseIntPipe) listingId: number,
+    @CurrentUser() user: AuthUser,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
   ) {
-    const views = await this.viewService.getListingViews(Number(listingId), skip, take);
-    return {
-      success: true,
-      data: views,
-      count: views.length,
-    };
-  }
-
-  @UseGuards(AuthGuard('jwt'))
-  @Get('user')
-  async getUserViews(@Req() req: Request, @Query('skip') skip = 0, @Query('take') take = 50) {
-    const userId = (req as any).user['id'];
-    const views = await this.viewService.getUserViews(userId, skip, take);
-    return {
-      success: true,
-      data: views,
-      count: views.length,
-    };
-  }
-
-  @UseGuards(AuthGuard('jwt'))
-  @Get('user/listings/total')
-  async getTotalViewsForUserListings(@Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const totalViews = await this.viewService.getTotalViewsForUserListings(userId);
-    return {
-      success: true,
-      data: {
-        totalViews,
-      },
-    };
-  }
-
-  @UseGuards(AuthGuard('jwt'))
-  @Get('user/listing/:listingId')
-  async getUserListingViewCount(@Param('listingId') listingId: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const count = await this.viewService.getUserListingViewCount(Number(listingId), userId);
-    return {
-      success: true,
-      data: {
-        count,
-      },
-    };
+    const views = await this.viewService.getListingViews(
+      listingId,
+      user,
+      safeSkip(skip),
+      safeTake(take, 50),
+    );
+    return { success: true, data: views, count: views.length };
   }
 }

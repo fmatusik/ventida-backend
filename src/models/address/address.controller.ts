@@ -4,12 +4,13 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Put,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../../common/jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../../common/roles';
 import { AddressService } from './address.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -18,10 +19,10 @@ import { UpdateAddressDto } from './dto/update-address.dto';
 export class AddressController {
   constructor(private readonly addressService: AddressService) {}
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Post()
-  async create(@Body() body: CreateAddressDto, @Req() req: Request) {
-    const userId = (req as any).user['id'];
+  async create(@Body() body: CreateAddressDto, @CurrentUser() user: AuthUser) {
+    const userId = user.id;
     const address = await this.addressService.create(body, userId);
     return {
       success: true,
@@ -29,10 +30,10 @@ export class AddressController {
     };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Get()
-  async getUserAddresses(@Req() req: Request) {
-    const userId = (req as any).user['id'];
+  async getUserAddresses(@CurrentUser() user: AuthUser) {
+    const userId = user.id;
     const addresses = await this.addressService.getUserAddresses(userId);
     return {
       success: true,
@@ -41,10 +42,10 @@ export class AddressController {
     };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Get('count')
-  async getAddressCount(@Req() req: Request) {
-    const userId = (req as any).user['id'];
+  async getAddressCount(@CurrentUser() user: AuthUser) {
+    const userId = user.id;
     const count = await this.addressService.getAddressCount(userId);
     return {
       success: true,
@@ -54,31 +55,32 @@ export class AddressController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    const address = await this.addressService.getById(Number(id));
+  async getById(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    const address = await this.addressService.getById(id, user.id);
     return {
       success: true,
       data: address,
     };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: UpdateAddressDto, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    const address = await this.addressService.update(Number(id), body, userId);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateAddressDto, @CurrentUser() user: AuthUser) {
+    const userId = user.id;
+    const address = await this.addressService.update(id, body, userId);
     return {
       success: true,
       data: address,
     };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  async delete(@Param('id') id: string, @Req() req: Request) {
-    const userId = (req as any).user['id'];
-    await this.addressService.delete(Number(id), userId);
+  async delete(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    const userId = user.id;
+    await this.addressService.delete(id, userId);
     return {
       success: true,
       message: 'Adres został usunięty',

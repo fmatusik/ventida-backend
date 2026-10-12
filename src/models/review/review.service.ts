@@ -1,8 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "src/prisma/prisma.service";
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
 import { CreateReviewDto } from "./dto/create-review.dto";
 import { UpdateReviewDto } from "./dto/update-review.dto";
 import { Review } from "@prisma/client";
+import { PUBLIC_USER_SELECT } from "../../common/user-select";
 
 
 @Injectable()
@@ -38,12 +39,14 @@ export class ReviewService {
 
         return await this.prisma.review.create({
             data: {
-                ...data,
+                rating: data.rating,
+                comment: data.comment,
+                reviewed_user_id: data.reviewed_user_id,
                 reviewer_id: reviewerId
             },
             include: {
-                reviewer: true,
-                reviewedUser: true
+                reviewer: { select: PUBLIC_USER_SELECT },
+                reviewedUser: { select: PUBLIC_USER_SELECT }
             }
         });
     }
@@ -51,10 +54,9 @@ export class ReviewService {
     async getByUserId(userId: number) {
         const reviews = await this.prisma.review.findMany({
             where: { reviewed_user_id: userId },
-            include: { reviewer: true },
+            include: { reviewer: { select: PUBLIC_USER_SELECT } },
             orderBy: { created_at: 'desc' }
         });
-        if(!reviews) return null;
         return reviews;
     }
 
@@ -62,8 +64,8 @@ export class ReviewService {
         const review = await this.prisma.review.findUnique({
             where: { id },
             include: {
-                reviewer: true,
-                reviewedUser: true
+                reviewer: { select: PUBLIC_USER_SELECT },
+                reviewedUser: { select: PUBLIC_USER_SELECT }
             }
         });
 
@@ -82,15 +84,15 @@ export class ReviewService {
         }
 
         if (review.reviewer_id !== reviewerId) {
-            throw new BadRequestException('Brak uprawnień do edycji tej recenzji');
+            throw new ForbiddenException('Brak uprawnień do edycji tej recenzji');
         }
 
         return await this.prisma.review.update({
             where: { id },
             data,
             include: {
-                reviewer: true,
-                reviewedUser: true
+                reviewer: { select: PUBLIC_USER_SELECT },
+                reviewedUser: { select: PUBLIC_USER_SELECT }
             }
         });
     }
@@ -103,7 +105,7 @@ export class ReviewService {
         }
 
         if (review.reviewer_id !== reviewerId) {
-            throw new BadRequestException('Brak uprawnień do usunięcia tej recenzji');
+            throw new ForbiddenException('Brak uprawnień do usunięcia tej recenzji');
         }
 
         await this.prisma.review.delete({ where: { id } });
@@ -113,8 +115,8 @@ export class ReviewService {
         return await this.prisma.review.findMany({
             where: { reviewer_id: reviewerId },
             include: {
-                reviewer: true,
-                reviewedUser: true
+                reviewer: { select: PUBLIC_USER_SELECT },
+                reviewedUser: { select: PUBLIC_USER_SELECT }
             },
             orderBy: { created_at: 'desc' }
         });

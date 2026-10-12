@@ -1,6 +1,7 @@
-import { IsNumber } from 'class-validator';
+import { IsInt, Min } from 'class-validator';
 
 export class CreateViewDto {
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   listingId: number;
 }

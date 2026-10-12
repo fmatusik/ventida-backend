@@ -1,32 +1,34 @@
-import { IsOptional, IsPhoneNumber, IsString, IsNumber } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { EmptyToUndefined, PHONE_REGEX } from '../../../common/validators';
 
 export class CreateAddressDto {
-  @IsString()
+  @IsString() @MinLength(1) @MaxLength(60)
   name: string;
 
-  @IsString()
+  @IsString() @MinLength(1) @MaxLength(60)
   surname: string;
 
+  @EmptyToUndefined()
   @IsOptional()
-  @IsPhoneNumber()
+  @Matches(PHONE_REGEX, { message: 'Nieprawidłowy numer telefonu' })
   phone_number?: string;
 
-  @IsString()
+  @IsString() @MinLength(2) @MaxLength(60)
   country: string;
 
-  @IsString()
+  @IsString() @MinLength(1) @MaxLength(80)
   town: string;
 
-  @IsString()
+  @IsString() @MinLength(1) @MaxLength(100)
   street: string;
 
-  @IsString()
+  @IsString() @MinLength(1) @MaxLength(20)
   building_number: string;
 
-  @IsOptional()
-  @IsString()
+  @EmptyToUndefined()
+  @IsOptional() @IsString() @MaxLength(20)
   apartment_number?: string;
 
-  @IsString()
+  @IsString() @MinLength(2) @MaxLength(20)
   zip: string;
 }
