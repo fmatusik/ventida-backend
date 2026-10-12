@@ -7,8 +7,8 @@ import { LoginUserDto } from './models/user/dto/login-user.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // Ochrona przed zgadywaniem haseł: 8 prób / minutę z jednego IP.
-  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  // Ochrona przed zgadywaniem haseł: 10 prób / minutę z jednego IP.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Post('login')
   async login(@Body() user: LoginUserDto) {

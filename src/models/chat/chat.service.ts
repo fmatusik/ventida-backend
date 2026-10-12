@@ -44,7 +44,7 @@ export class ChatService {
   }
 
   async getChatsByUserId(userId: number) {
-    return this.prisma.chat.findMany({
+    const chats = await this.prisma.chat.findMany({
       where: {
         OR: [{ userId }, { listing: { userId } }],
       },
@@ -55,6 +55,27 @@ export class ChatService {
       },
       orderBy: { created_at: 'desc' },
     });
+
+    // Liczba nieprzeczytanych wiadomości od drugiej strony w każdej rozmowie
+    const unread = await this.prisma.message.groupBy({
+      by: ['chatId'],
+      where: {
+        chatId: { in: chats.map((c) => c.id) },
+        is_read: false,
+        senderId: { not: userId },
+      },
+      _count: { _all: true },
+    });
+    const unreadByChat = new Map(unread.map((u) => [u.chatId, u._count._all]));
+
+    return chats
+      .map((c) => ({ ...c, unreadCount: unreadByChat.get(c.id) ?? 0 }))
+      .sort((a, b) => {
+        // najnowsza aktywność na górze
+        const at = a.messages[0]?.created_at ?? a.created_at;
+        const bt = b.messages[0]?.created_at ?? b.created_at;
+        return bt.getTime() - at.getTime();
+      });
   }
 
   /** Lista rozmów do ogłoszenia - tylko dla jego właściciela. */

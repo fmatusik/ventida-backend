@@ -13,15 +13,15 @@ describeIf('Rate limiting (e2e)', () => {
   });
   afterAll(async () => app.close());
 
-  it('blokuje brute-force na logowaniu po 8 próbach (429)', async () => {
+  it('blokuje brute-force na logowaniu po 10 próbach (429)', async () => {
     const statuses: number[] = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 12; i++) {
       const res = await request(app.getHttpServer())
         .post('/auth/login')
         .send({ email: 'brute@example.com', password: 'Wrong1234!' });
       statuses.push(res.status);
     }
-    expect(statuses.slice(0, 8).every((s) => s === 401)).toBe(true);
-    expect(statuses.slice(8)).toEqual([429, 429]);
+    expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
+    expect(statuses.slice(10)).toEqual([429, 429]);
   });
 });

@@ -39,8 +39,8 @@ export class UserController {
     }
   }
 
-  // Rejestracja: 5 kont / godzinę z jednego IP
-  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  // Rejestracja: 10 kont / godzinę z jednego IP
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
   @Post()
   async create(@Body() body: CreateUserDto) {
     const user = await this.userService.create(body);
